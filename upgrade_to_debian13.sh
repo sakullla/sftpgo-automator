@@ -42,7 +42,7 @@ if [[ ! "$confirm" =~ ^[yY](es)?$ ]]; then
 fi
 
 echo
-echo -e "${GREEN}--- [步骤 1/5] 正在备份当前的软件源文件... ---${NC}"
+echo -e "${GREEN}--- [步骤 1/6] 正在备份当前的软件源文件... ---${NC}"
 # 检查目录是否存在
 if [ -d "/etc/apt/sources.list.d" ]; then
     cp -R /etc/apt/sources.list.d /etc/apt/sources.list.d.bak
@@ -52,7 +52,7 @@ echo "备份完成，已保存到 .bak 文件。"
 sleep 2
 
 echo
-echo -e "${GREEN}--- [步骤 2/5] 正在将软件源从 'bookworm' 替换为 'trixie'... ---${NC}"
+echo -e "${GREEN}--- [步骤 2/6] 正在将软件源从 'bookworm' 替换为 'trixie'... ---${NC}"
 sed -i 's/bookworm/trixie/g' /etc/apt/sources.list
 if [ -d "/etc/apt/sources.list.d" ]; then
     find /etc/apt/sources.list.d/ -type f -name "*.list" -exec sed -i 's/bookworm/trixie/g' {} +
@@ -61,7 +61,7 @@ echo "软件源更新完成。"
 sleep 2
 
 echo
-echo -e "${GREEN}--- [步骤 3/5] 正在更新软件包列表并执行升级... ---${NC}"
+echo -e "${GREEN}--- [步骤 3/6] 正在更新软件包列表并执行升级... ---${NC}"
 echo "这可能需要很长时间，请确保网络和电源稳定。"
 echo
 echo "--> 正在更新软件包索引 (apt update)..."
@@ -78,14 +78,27 @@ echo "核心升级过程完成。"
 sleep 2
 
 echo
-echo -e "${GREEN}--- [步骤 4/5] 正在清理不再需要的软件包... ---${NC}"
+echo -e "${GREEN}--- [步骤 4/6] 正在恢复并重新加载系统配置... ---${NC}"
+if [ -f "/etc/sysctl.conf.dpkg-bak" ]; then
+    echo "检测到 sysctl.conf 的备份文件，正在恢复..."
+    mv /etc/sysctl.conf.dpkg-bak /etc/sysctl.conf
+    echo "恢复完成。正在重新加载系统配置 (sysctl -p)..."
+    sysctl -p
+    echo "系统配置已重新加载。"
+else
+    echo "未找到 sysctl.conf 的备份文件，跳过此步骤。"
+fi
+sleep 2
+
+echo
+echo -e "${GREEN}--- [步骤 5/6] 正在清理不再需要的软件包... ---${NC}"
 apt --purge autoremove -y
 apt clean
 echo "系统清理完成。"
 sleep 2
 
 echo
-echo -e "${GREEN}--- [步骤 5/5] 检查升级结果... ---${NC}"
+echo -e "${GREEN}--- [步骤 6/6] 检查升级结果... ---${NC}"
 if command -v lsb_release &> /dev/null; then
     VERSION_INFO=$(lsb_release -a)
     echo "当前系统版本信息："
