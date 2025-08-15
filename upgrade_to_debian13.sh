@@ -45,7 +45,7 @@ echo
 echo -e "${GREEN}--- [步骤 1/6] 正在备份当前的软件源文件... ---${NC}"
 # 检查目录是否存在
 if [ -d "/etc/apt/sources.list.d" ]; then
-    cp -R /etc/apt/sources.list.d /etc/apt/sources.list.d.bak
+    cp -R /etc/apt/sources.list.d /etc/apt.sources.list.d.bak
 fi
 cp /etc/apt/sources.list /etc/apt/sources.list.bak
 echo "备份完成，已保存到 .bak 文件。"
@@ -78,15 +78,49 @@ echo "核心升级过程完成。"
 sleep 2
 
 echo
-echo -e "${GREEN}--- [步骤 4/6] 正在恢复并重新加载系统配置... ---${NC}"
+echo -e "${GREEN}--- [步骤 4/6] 正在迁移自定义 sysctl 配置... ---${NC}"
+MIGRATED_SYSCTL_FILE="/etc/sysctl.d/99-migrated-bookworm.conf"
+SOURCE_SYSCTL_FILE=""
+
+# 优先使用 dpkg 的备份文件，因为它可能包含用户在升级前的最新修改
 if [ -f "/etc/sysctl.conf.dpkg-bak" ]; then
-    echo "检测到 sysctl.conf 的备份文件，正在恢复..."
-    mv /etc/sysctl.conf.dpkg-bak /etc/sysctl.conf
-    echo "恢复完成。正在重新加载系统配置 (sysctl -p)..."
-    sysctl -p
-    echo "系统配置已重新加载。"
+    echo "检测到 dpkg 备份的 sysctl 配置文件 (/etc/sysctl.conf.dpkg-bak)，将优先迁移此文件。"
+    SOURCE_SYSCTL_FILE="/etc/sysctl.conf.dpkg-bak"
+elif [ -f "/etc/sysctl.conf" ]; then
+    echo "检测到 /etc/sysctl.conf，将检查并迁移此文件。"
+    SOURCE_SYSCTL_FILE="/etc/sysctl.conf"
+fi
+
+if [ -n "$SOURCE_SYSCTL_FILE" ]; then
+    # 提取所有非空且非注释的行
+    ACTIVE_CONFIGS=$(grep -vE '^\s*#|^\s*$' "$SOURCE_SYSCTL_FILE" || true)
+    
+    if [ -n "$ACTIVE_CONFIGS" ]; then
+        echo "检测到有效的自定义 sysctl 配置，正在迁移..."
+        # 将有效配置写入新文件
+        echo "# Migrated from $SOURCE_SYSCTL_FILE during Debian 13 upgrade" > "$MIGRATED_SYSCTL_FILE"
+        echo "$ACTIVE_CONFIGS" >> "$MIGRATED_SYSCTL_FILE"
+        
+        # 清理旧文件
+        echo "配置已成功从 $SOURCE_SYSCTL_FILE 迁移到 $MIGRATED_SYSCTL_FILE"
+        if [ "$SOURCE_SYSCTL_FILE" == "/etc/sysctl.conf.dpkg-bak" ]; then
+            rm "$SOURCE_SYSCTL_FILE"
+            echo "已删除旧的备份文件: $SOURCE_SYSCTL_FILE"
+        fi
+        if [ -f "/etc/sysctl.conf" ]; then
+            mv /etc/sysctl.conf /etc/sysctl.conf.migrated
+            echo "# This file's content was migrated to $MIGRATED_SYSCTL_FILE" > /etc/sysctl.conf
+            echo "已备份并清空 /etc/sysctl.conf"
+        fi
+        
+        echo "正在重新加载所有系统配置..."
+        sysctl --system
+        echo "系统配置已重新加载。"
+    else
+        echo "在 $SOURCE_SYSCTL_FILE 中未找到有效的自定义配置，跳过迁移。"
+    fi
 else
-    echo "未找到 sysctl.conf 的备份文件，跳过此步骤。"
+    echo "未找到 /etc/sysctl.conf 或其备份文件，跳过迁移。"
 fi
 sleep 2
 
